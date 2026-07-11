@@ -1,0 +1,7 @@
+PyAutoGUI>=0.9.54
+opencv-python>=4.9.0
+numpy>=1.26.0
+pillow>=10.0.0
+pywin32>=306; platform_system == "Windows"
+pyperclip>=1.8.2
+pyscreeze>=0.1.30

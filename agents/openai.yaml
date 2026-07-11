@@ -1,0 +1,6 @@
+interface:
+  display_name: "自动修改密码"
+  short_description: "用图片识别自动键入账号密码并处理保存提示"
+  default_prompt: "Use $auto-change-password to 自动修改密码。"
+policy:
+  allow_implicit_invocation: true

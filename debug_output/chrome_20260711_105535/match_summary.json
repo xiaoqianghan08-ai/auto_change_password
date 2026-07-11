@@ -1,0 +1,79 @@
+[
+  {
+    "suffix": "input_password_window",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_input_password_window.png",
+    "exists": true,
+    "found": false,
+    "left": null,
+    "top": null,
+    "width": null,
+    "height": null,
+    "confidence": 0.6362727284431458
+  },
+  {
+    "suffix": "input_account",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_input_account.png",
+    "exists": true,
+    "found": true,
+    "left": 731,
+    "top": 499,
+    "width": 442,
+    "height": 57,
+    "confidence": 0.9999772310256958
+  },
+  {
+    "suffix": "input_password",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_input_password.png",
+    "exists": true,
+    "found": true,
+    "left": 731,
+    "top": 624,
+    "width": 452,
+    "height": 52,
+    "confidence": 1.0
+  },
+  {
+    "suffix": "login_button",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_login_button.png",
+    "exists": true,
+    "found": true,
+    "left": 723,
+    "top": 801,
+    "width": 475,
+    "height": 92,
+    "confidence": 0.9999978542327881
+  },
+  {
+    "suffix": "save_password_window",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_save_password_window.png",
+    "exists": true,
+    "found": false,
+    "left": null,
+    "top": null,
+    "width": null,
+    "height": null,
+    "confidence": 0.15860022604465485
+  },
+  {
+    "suffix": "save_password",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_save_password.png",
+    "exists": true,
+    "found": false,
+    "left": null,
+    "top": null,
+    "width": null,
+    "height": null,
+    "confidence": 0.4848599433898926
+  },
+  {
+    "suffix": "update_password",
+    "template": "D:\\Idea_Project\\python-demo\\auto-change-password\\assets\\chrome\\chrome_update_password.png",
+    "exists": true,
+    "found": false,
+    "left": null,
+    "top": null,
+    "width": null,
+    "height": null,
+    "confidence": 0.5431496500968933
+  }
+]
