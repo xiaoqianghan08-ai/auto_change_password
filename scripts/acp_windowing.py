@@ -9,7 +9,7 @@ import webbrowser
 from pathlib import Path
 from typing import Iterable
 
-from acp_common import info, warn
+from acp_common import info, skill_dir, warn
 from acp_environment import is_windows
 
 
@@ -248,6 +248,21 @@ def existing_path(path_text: str) -> Path | None:
     expanded = Path(os.path.expandvars(path_text.strip('"')))
     return expanded if expanded.exists() else None
 
+def find_app_from_asset_config(app_name: str) -> Path | str | None:
+    config_file = skill_dir() / "assets" / app_name / "appPath.txt"
+    if not config_file.exists():
+        return None
+
+    for raw_line in config_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip().replace("\ufeff", "")
+        if not line or line.startswith("#"):
+            continue
+        path = existing_path(line)
+        if path:
+            return path
+        return line
+    return None
+
 def find_app_from_path(app_name: str) -> Path | None:
     for exe_name in executable_names_for_app(app_name):
         found = shutil.which(exe_name)
@@ -315,19 +330,85 @@ def find_app_shortcut(app_name: str) -> Path | None:
             continue
     return None
 
-def resolve_application_launcher(app_name: str) -> Path | None:
+def common_install_roots() -> list[Path]:
+    candidates = [
+        os.environ.get("ProgramFiles"),
+        os.environ.get("ProgramFiles(x86)"),
+        os.environ.get("LOCALAPPDATA"),
+        os.environ.get("APPDATA"),
+        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs"),
+    ]
+    roots: list[Path] = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(os.path.expandvars(candidate))
+        if path.exists() and path not in roots:
+            roots.append(path)
+    return roots
+
+def find_app_from_common_install_dirs(app_name: str, *, time_limit: float = 5.0) -> Path | None:
+    normalized = app_name.strip().lower()
+    if not normalized:
+        return None
+
+    aliases = {normalized}
+    for exe_name in executable_names_for_app(app_name):
+        aliases.add(Path(exe_name).stem.lower())
+
+    deadline = time.time() + time_limit
+    fallback: Path | None = None
+    for root in common_install_roots():
+        if time.time() > deadline:
+            break
+        try:
+            for current, dirs, files in os.walk(root):
+                if time.time() > deadline:
+                    break
+                current_path = Path(current)
+                try:
+                    depth = len(current_path.relative_to(root).parts)
+                except ValueError:
+                    depth = 0
+                if depth >= 5:
+                    dirs[:] = []
+
+                current_lower = current_path.name.lower()
+                folder_matches = normalized in current_lower or any(alias in current_lower for alias in aliases)
+                for file_name in files:
+                    file_path = current_path / file_name
+                    suffix = file_path.suffix.lower()
+                    if suffix not in {".exe", ".lnk"}:
+                        continue
+                    stem = file_path.stem.lower()
+                    if stem in aliases:
+                        return file_path
+                    if normalized in stem:
+                        fallback = fallback or file_path
+                    elif folder_matches and any(alias in stem or stem in alias for alias in aliases):
+                        fallback = fallback or file_path
+        except OSError:
+            continue
+    return fallback
+
+def resolve_application_launcher(app_name: str) -> Path | str | None:
     return (
-        find_app_from_path(app_name)
+        find_app_from_asset_config(app_name)
+        or find_app_from_path(app_name)
         or find_app_from_registry(app_name)
         or find_app_from_known_paths(app_name)
         or find_app_shortcut(app_name)
+        or find_app_from_common_install_dirs(app_name)
     )
 
 def launch_application(app_name: str) -> bool:
     launcher = resolve_application_launcher(app_name)
     if launcher:
         try:
-            os.startfile(str(launcher))  # type: ignore[attr-defined]
+            if isinstance(launcher, Path):
+                os.startfile(str(launcher))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(launcher, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             info(f"已启动应用：{app_name} -> {launcher}")
             time.sleep(2.0)
             return True
@@ -342,7 +423,7 @@ def launch_application(app_name: str) -> bool:
         return True
     except Exception as exc:
         warn(f"未找到或无法启动应用“{app_name}”：{exc}")
-        warn("如果应用已经打开，工具会继续尝试前置已有窗口；如果没有打开，请先手动打开应用，或把应用快捷方式放到开始菜单/桌面。")
+        warn(f"如果应用已经打开，工具会继续尝试前置已有窗口；如果没有打开，请先手动打开应用，或在 assets\\{app_name}\\appPath.txt 写入应用 exe/快捷方式路径。")
         return False
 
 def open_web_url(app_name: str, url: str) -> None:

@@ -99,6 +99,19 @@ def click_optional_left_side(
     time.sleep(0.25)
     return True
 
+def ensure_target_window_ready(app_name: str, target: str, win32con, win32gui, *, after_focus_wait: float) -> None:
+    if target == "desktop":
+        if not wait_for_window_to_front(app_name, "desktop", win32con, win32gui, timeout=1.5):
+            info(f"未发现可前置的 {app_name} 窗口，先尝试启动应用。")
+            launch_application(app_name)
+            if not wait_for_window_to_front(app_name, "desktop", win32con, win32gui, timeout=10.0):
+                warn(f"未能自动前置 {app_name} 窗口，将继续使用当前前台窗口。请确认 {app_name} 已打开并停留在登录页面。")
+    else:
+        bring_window_to_front(app_name, target, win32con, win32gui)
+
+    info(f"窗口已请求前置，等待 {after_focus_wait:.1f} 秒让目标应用/页面完成前置和重绘。")
+    time.sleep(max(0.0, after_focus_wait))
+
 def run_login_flow(
     args: argparse.Namespace,
     *,
@@ -145,9 +158,7 @@ def run_login_flow(
 
     info("请确保目标登录页面已经打开。3 秒后开始识别。")
     time.sleep(3)
-    bring_window_to_front(app_name, target, win32con, win32gui)
-    info(f"窗口已请求前置，等待 {args.after_focus_wait:.1f} 秒让 Chrome/页面完成前置和重绘。")
-    time.sleep(max(0.0, args.after_focus_wait))
+    ensure_target_window_ready(app_name, target, win32con, win32gui, after_focus_wait=args.after_focus_wait)
     switch_to_english_input_method(win32gui)
 
     confidence = args.confidence
@@ -414,10 +425,6 @@ def run_batch_automation(args: argparse.Namespace) -> int:
                 finally:
                     close_foreground_window(pyautogui, label=f"{app_name} - {entry.url}")
         else:
-            if not wait_for_window_to_front(app_name, "desktop", win32con, win32gui, timeout=1.5):
-                launch_application(app_name)
-                if not wait_for_window_to_front(app_name, "desktop", win32con, win32gui, timeout=10.0):
-                    warn(f"未能自动前置 {app_name} 窗口，将继续使用当前前台窗口。请确认 {app_name} 已打开并停留在登录页面。")
             run_args = make_run_args(args, app_name=app_name, account=account, password=password, target="desktop")
             try:
                 code = run_login_flow(
