@@ -64,6 +64,13 @@ Recommended optional save/update images:
 <应用名称>_update_password.png
 ```
 
+Optional pre-login click images. If present, the runner clicks the left side of each image after account/password typing and before clicking the login button:
+
+```text
+<应用名称>_remember_password.png
+<应用名称>_agree_protocol.png
+```
+
 For web applications, optionally add:
 
 ```text
@@ -85,6 +92,8 @@ input_password_window.png
 input_account.png
 input_password.png
 login_button.png
+remember_password.png
+agree_protocol.png
 save_password_window.png
 save_password.png
 update_password.png
@@ -104,12 +113,12 @@ Run:
 
 `run.bat` keeps the cmd window open after the Python script exits, prints the exit code, and lets the user read missing-asset or debug guidance before closing the window.
 
-The first visible tool line is `自动输入密码工具运行中`. The Python tool first asks whether to let the tool automatically modify account/passwords for applications. If the user answers yes, it asks once for account/password, then reads every application folder under `assets/` in sorted order:
+The first visible tool line is `自动输入密码工具运行中`. Before asking for batch mode, the Python tool prints a risk warning that web applications will be closed and the user should save unsaved web content first. It then asks whether to let the tool automatically modify account/passwords for applications. If the user answers yes, it asks once for account/password, then reads every application folder under `assets/` in sorted order:
 
-- `web` applications: read `assets/<应用名称>/webUrl.txt`, open each URL in order with the target browser, load that URL's images from the corresponding numbered/resource folder, type the supplied account/password, click save/update-password prompts when templates are available, close the current browser window, then continue with the next URL.
+- `web` applications: read `assets/<应用名称>/webUrl.txt`; before each URL, close existing windows for that browser application to avoid stale pages interfering with recognition, then reopen the browser with that URL, load that URL's images from the corresponding numbered/resource folder, type the supplied account/password, click save/update-password prompts when templates are available, close the current browser window, then continue with the next URL.
 - `desktop` applications: first try to foreground an already-open window. If no matching window is found, resolve and start the application from PATH, Windows App Paths registry, known Tencent install locations, or Start Menu/Desktop shortcuts, then wait and retry foreground activation before running the same image-recognition and typing flow.
 
-Batch mode does not pause after every application to ask whether typing succeeded; use the printed logs and `debug_output` when recognition fails. If the user answers no to batch mode, the original single-application loop is used: after each run, including missing-asset or recognition-failure runs, the Python tool asks whether to exit. If the user chooses not to exit, it asks for the next application name, asks whether to update account/password, then repeats the same password-entry flow.
+Batch mode does not pause after every application to ask whether typing succeeded; use the printed logs and `debug_output` when recognition fails. After one full batch finishes, the Python tool asks whether to continue batch auto-modification. If the user answers `y`, it runs another full batch. If the user answers `n`, it asks whether to exit the current tool. If the user answers `y`, the tool exits; if the user answers `n`, it enters the original single-application loop. If the user answers no to batch mode at startup, the original single-application loop is used immediately: after each run, including missing-asset or recognition-failure runs, the Python tool asks whether to exit. If the user chooses not to exit, it asks for the next application name, asks whether to update account/password, then repeats the same password-entry flow.
 
 or:
 
@@ -138,9 +147,10 @@ The script:
 6. Waits after foreground activation (`--after-focus-wait`, default 1.5 seconds) so Chrome or the desktop app can finish repainting and focus changes, then requests the English US keyboard layout (`00000409`) for the foreground window. Before each account/password typing operation, request the English layout again so an active Chinese IME does not intercept `pyautogui.write()` into composition/candidate mode. After clicking the login button, request the Simplified Chinese keyboard layout (`00000804`) for the foreground window so the user's local input method returns to Chinese.
 7. Tries `<应用名称>_input_password_window.png` as a context region, but do not fail if it is not recognized. Critical image recognition uses multiple screenshot rounds (`--recognition-retries`, default 2; `--recognition-retry-wait`, default 1.0 second) before falling back. If the context image fails, locate `<应用名称>_login_button.png`, `<应用名称>_input_account.png`, and `<应用名称>_input_password.png` globally, then infer the login window from those child elements. Use account/password templates as direct click targets whenever they are recognized; use inferred positions only when a field template is missing or not recognized.
 8. Clicks the account field, then clicks the target point again immediately before `Ctrl+A`/typing to avoid stale focus after browser foreground changes. Clears the field with `Ctrl+A` plus `Backspace`, enters the account by keyboard character-by-character typing only, then verifies the account field by copying selected text back and retrying character typing if verification fails. For `web` targets, move from the account field to the password field with `Tab` and do not click the password template again before typing; this avoids pages where clicking the password container leaves focus in the account field. For `desktop` targets, use `WM_SETTEXT` only when the target point resolves to a standard Win32 `Edit`/`RichEdit` control and account read-back verifies the write; for custom/self-drawn controls such as QQ, fall back to focused keyboard character-by-character typing. Do not use `Ctrl+V` or clipboard paste for input.
-9. If any save/update images exist, handles Chrome-style save/update password prompts with a separate robust flow. After login, wait `--post-login-wait`, then search for up to `--save-prompt-timeout` seconds, retrying every `--save-prompt-retry-wait` seconds. Search `<应用名称>_save_password_window.png` across the full desktop/window, not inside the login form region. Use lower confidence for the window (`min_confidence=0.65`), grayscale fallback, and OpenCV multi-scale fallback. Prefer clicking `<应用名称>_update_password.png`; if it is not found, click `<应用名称>_save_password.png`. Search buttons first inside the detected prompt window, then across the full screen. If the prompt/window/buttons still cannot be recognized, automatically run `debug_tool.py`.
-10. Prompts the user to confirm whether the account and password were typed successfully after the typing flow completes. If the answer is `n`, `no`, `否`, or `失败`, it prints step-by-step `debug_tool.py` guidance.
-11. Prompts whether to exit the tool. If the user chooses not to exit, ask for another application and whether to update account/password, then run another cycle. If the user answers `n` to updating account/password and the previous account/password exist, reuse the previous values and do not prompt for them again.
+9. Before clicking the login button, if `<应用名称>_remember_password.png` or `<应用名称>_agree_protocol.png` exists and is recognized, click the left side of the recognized image. These clicks are optional and skipped when the images are absent or not recognized.
+10. If any save/update images exist, handles Chrome-style save/update password prompts with a separate robust flow. After login, wait `--post-login-wait`, then search for up to `--save-prompt-timeout` seconds, retrying every `--save-prompt-retry-wait` seconds. Search `<应用名称>_save_password_window.png` across the full desktop/window, not inside the login form region. Use lower confidence for the window (`min_confidence=0.65`), grayscale fallback, and OpenCV multi-scale fallback. Prefer clicking `<应用名称>_update_password.png`; if it is not found, click `<应用名称>_save_password.png`. Search buttons first inside the detected prompt window, then across the full screen. If the prompt/window/buttons still cannot be recognized, automatically run `debug_tool.py`.
+11. Prompts the user to confirm whether the account and password were typed successfully after the typing flow completes. If the answer is `n`, `no`, `否`, or `失败`, it prints step-by-step `debug_tool.py` guidance.
+12. Prompts whether to exit the tool. If the user chooses not to exit, ask for another application and whether to update account/password, then run another cycle. If the user answers `n` to updating account/password and the previous account/password exist, reuse the previous values and do not prompt for them again.
 
 If the flow exits before this confirmation prompt, read the cmd output: it should show missing required assets, dependency installation failure, administrator-permission failure, or image-recognition failure. For image-recognition failure, the script asks the user to open the target page and bring it to the foreground, waits 5 seconds, runs `debug_tool.py` automatically, then prints the generated `desktop_screenshot.png`, `annotated_matches.png`, and `match_summary.json` paths.
 

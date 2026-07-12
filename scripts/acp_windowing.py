@@ -22,6 +22,23 @@ BROWSER_WINDOW_HINTS = [
     "Internet Explorer",
 ]
 
+BROWSER_TITLE_HINTS_BY_APP = {
+    "chrome": ["Chrome", "Google Chrome"],
+    "google chrome": ["Chrome", "Google Chrome"],
+    "edge": ["Microsoft Edge"],
+    "microsoft edge": ["Microsoft Edge"],
+    "firefox": ["Firefox", "Mozilla Firefox"],
+    "mozilla firefox": ["Firefox", "Mozilla Firefox"],
+    "brave": ["Brave"],
+    "brave browser": ["Brave"],
+    "opera": ["Opera"],
+    "opera browser": ["Opera"],
+    "qqbrowser": ["QQBrowser", "QQ浏览器"],
+    "qq浏览器": ["QQBrowser", "QQ浏览器"],
+    "360se": ["360浏览器", "360"],
+    "360浏览器": ["360浏览器", "360"],
+}
+
 BROWSER_APP_NAMES = {
     "chrome",
     "google chrome",
@@ -100,6 +117,25 @@ def iter_visible_windows(win32gui) -> Iterable[tuple[int, str]]:
     win32gui.EnumWindows(callback, windows)
     return windows
 
+def browser_title_hints_for_app(app_name: str) -> list[str]:
+    normalized = app_name.strip().lower()
+    hints = BROWSER_TITLE_HINTS_BY_APP.get(normalized, [])
+    if not hints and app_name.strip():
+        hints = [app_name.strip()]
+    return hints
+
+def window_matches_application(title: str, app_name: str, target: str) -> bool:
+    lower = title.lower()
+    app_lower = app_name.strip().lower()
+    if target == "web":
+        hints = browser_title_hints_for_app(app_name)
+        if hints:
+            return any(hint.lower() in lower for hint in hints)
+        return bool(app_lower and app_lower in lower)
+    if app_lower and app_lower in lower:
+        return True
+    return False
+
 def bring_window_to_front(app_name: str, target: str, win32con, win32gui) -> bool:
     app_lower = app_name.lower()
     windows = list(iter_visible_windows(win32gui))
@@ -137,6 +173,43 @@ def bring_window_to_front(app_name: str, target: str, win32con, win32gui) -> boo
     except Exception as exc:
         warn(f"窗口置前失败，将继续使用当前前台窗口：{exc}")
         return False
+
+def close_application_windows(
+    app_name: str,
+    target: str,
+    win32con,
+    win32gui,
+    *,
+    timeout: float = 5.0,
+) -> int:
+    windows = [
+        (hwnd, title)
+        for hwnd, title in iter_visible_windows(win32gui)
+        if window_matches_application(title, app_name, target)
+    ]
+    if not windows:
+        info(f"未发现需要关闭的 {app_name} 窗口。")
+        return 0
+
+    for hwnd, title in windows:
+        try:
+            info(f"关闭已有 {app_name} 窗口：{title}")
+            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+        except Exception as exc:
+            warn(f"关闭窗口失败：{title}；{exc}")
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        remaining = [
+            title
+            for _, title in iter_visible_windows(win32gui)
+            if window_matches_application(title, app_name, target)
+        ]
+        if not remaining:
+            break
+        time.sleep(0.5)
+
+    return len(windows)
 
 def wait_for_window_to_front(
     app_name: str,

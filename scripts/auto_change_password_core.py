@@ -25,6 +25,7 @@ from acp_vision import (
 )
 from acp_windowing import (
     bring_window_to_front,
+    close_application_windows,
     close_foreground_window,
     infer_target_type,
     launch_application,
@@ -55,6 +56,48 @@ def prompt_yes_no(prompt: str, *, default: bool | None = None) -> bool:
         if answer in {"n", "no", "否", "不", "不退出"}:
             return False
         print("请输入 y 或 n。")
+
+def click_optional_left_side(
+    pyautogui,
+    image_path,
+    label: str,
+    *,
+    login_window,
+    confidence: float,
+    attempts: int,
+    retry_wait: float,
+) -> bool:
+    if not image_path.exists():
+        return False
+
+    box, score = locate_with_retries(
+        pyautogui,
+        image_path,
+        region=login_window,
+        confidence=confidence,
+        min_confidence=0.68,
+        attempts=attempts,
+        retry_wait=retry_wait,
+    )
+    if not box and login_window is not None:
+        box, score = locate_with_retries(
+            pyautogui,
+            image_path,
+            confidence=confidence,
+            min_confidence=0.68,
+            attempts=attempts,
+            retry_wait=retry_wait,
+        )
+    if not box:
+        warn(f"未识别到可选点击项 {label}：{image_path.name}，跳过。")
+        return False
+
+    x = box.left + max(2, min(8, box.width // 10))
+    y = box.top + box.height // 2
+    pyautogui.click(x, y)
+    info(f"点击可选项 {label} 最左侧：x={x}, y={y}, confidence={score}")
+    time.sleep(0.25)
+    return True
 
 def run_login_flow(
     args: argparse.Namespace,
@@ -232,6 +275,24 @@ def run_login_flow(
         label="密码",
         focus_before_input=password_focus_before_input,
     )
+    click_optional_left_side(
+        pyautogui,
+        paths["remember_password"],
+        "记住密码",
+        login_window=login_window,
+        confidence=confidence,
+        attempts=args.recognition_retries,
+        retry_wait=args.recognition_retry_wait,
+    )
+    click_optional_left_side(
+        pyautogui,
+        paths["agree_protocol"],
+        "同意协议",
+        login_window=login_window,
+        confidence=confidence,
+        attempts=args.recognition_retries,
+        retry_wait=args.recognition_retry_wait,
+    )
     click_box(pyautogui, login_button, "登录按钮")
     switch_to_chinese_input_method(win32gui)
 
@@ -274,7 +335,7 @@ def prepare_runtime():
 def run_once(args: argparse.Namespace) -> int:
     pyautogui, pyperclip, win32con, win32gui = prepare_runtime()
 
-    app_name = prompt_missing(args.app, "请输入应用名称（例如 chrome、QQ）：").strip()
+    app_name = prompt_missing(args.app, "请输入需要自动修改密码的应用名称（例如 chrome）：").strip()
     account = prompt_missing(args.account, "请输入账号：")
     password = prompt_missing(args.password, "请输入密码：")
 
@@ -325,6 +386,8 @@ def run_batch_automation(args: argparse.Namespace) -> int:
                     f"开始处理 {app_name} 第 {index}/{len(url_entries)} 个地址：{entry.url}；"
                     f"图片资源目录编号：{entry.asset_group}"
                 )
+                close_application_windows(app_name, "web", win32con, win32gui)
+                time.sleep(1.0)
                 open_web_url(app_name, entry.url)
                 run_args = make_run_args(args, app_name=app_name, account=account, password=password, target="web")
                 try:
@@ -385,7 +448,7 @@ def ask_next_cycle_args(previous_args: argparse.Namespace) -> argparse.Namespace
     if should_exit:
         return None
 
-    app_name = input("请输入需要修改的应用名称（例如 chrome、QQ）：").strip()
+    app_name = input("请输入需要自动修改密码的应用名称（例如 chrome）：").strip()
     while not app_name:
         app_name = input("应用名称不能为空，请重新输入：").strip()
 
@@ -409,13 +472,8 @@ def ask_next_cycle_args(previous_args: argparse.Namespace) -> argparse.Namespace
     next_args.target = "auto"
     return next_args
 
-def run_loop(args: argparse.Namespace) -> int:
-    print("自动输入密码工具运行中")
-    if prompt_yes_no("是否让工具自动修改应用的账号密码", default=False):
-        return run_batch_automation(args)
-
+def run_single_application_loop(args: argparse.Namespace, last_code: int = 0) -> int:
     current_args = args
-    last_code = 0
 
     while True:
         try:
@@ -431,6 +489,23 @@ def run_loop(args: argparse.Namespace) -> int:
         if next_args is None:
             return last_code
         current_args = next_args
+
+def run_loop(args: argparse.Namespace) -> int:
+    print("自动输入密码工具运行中")
+    last_code = 0
+
+    print("[RISK] 批量自动修改会在处理 web 端应用前关闭对应浏览器窗口。")
+    print("[RISK] 请提前保存 web 端应用中的未保存内容，避免数据丢失。")
+    if prompt_yes_no("是否让工具自动修改应用的账号密码", default=False):
+        while True:
+            last_code = run_batch_automation(args)
+            if prompt_yes_no("是否继续进行批量自动修改", default=False):
+                continue
+            if prompt_yes_no("是否退出当前工具", default=True):
+                return last_code
+            break
+
+    return run_single_application_loop(args, last_code)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
